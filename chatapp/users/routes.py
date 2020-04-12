@@ -13,7 +13,6 @@ users = Blueprint('users', __name__)
 user_schema = UserSchema()
 users_schema = UserSchema(many=True)
 
-
 #Login
 
 @users.route('/login')
@@ -38,24 +37,26 @@ def login():
 #  User CRUD
 
 @users.route('/user', methods=['GET'])
-def get_all_users():
+@token_required
+def get_all_users(current_user):
     users = User.query.all()
     result = users_schema.dump(users)
 
     return jsonify(result)
 
 @users.route('/user/<public_id>', methods=['GET'])
-def get_single_user(public_id):
+@token_required
+def get_single_user(current_user, public_id):
     user = User.query.filter_by(public_id=public_id).first()
     if not user:
         return jsonify({"errors" : "User not found"}), 400
 
-    result = user_schema.dump(user)
-    return result
+    return user_schema.dump(user)
 
 @users.route('/user', methods=['POST'])
 def create_user():
     data = request.json
+    data['admin'] = False
     try:
         user = user_schema.load(data)
     except ValidationError as err:
@@ -69,17 +70,20 @@ def create_user():
         user.public_id = str(uuid.uuid4())
         db.session.add(user)
         db.session.commit()
-        result = user_schema.dump(user)
-        return result, 201
+        return user_schema.dump(user), 201
         
 @users.route('/user/<public_id>', methods=['PUT'])
 @token_required
 def update_user(current_user, public_id):
 
     data = request.json
-    tmp_user = User.query.filter_by(public_id=public_id, id=current_user.id).first()
+    tmp_user = User.query.filter_by(public_id=public_id).first()
     if not tmp_user:
         return jsonify({"errors" : "User not found"}), 400
+    if public_id != current_user.public_id and current_user.admin is False:
+        return jsonify({"errors" : "Permission denied"}), 403
+    if 'admin' in data and data['admin'] == True and current_user.admin is False:
+        return jsonify({"errors" : "Permission denied"}), 403
 
     if 'email' in data:
         tmp_user.email = data['email']
@@ -105,19 +109,36 @@ def update_user(current_user, public_id):
             user.username = data['username']
         if 'profile_picture' in data:
             user.profile_picture = data['profile_picture']
+        if 'admin' in data:
+            user.admin = data['admin']
 
         db.session.commit()
-        result = user_schema.dump(user)
-        return result
+        return user_schema.dump(user)
 
 @users.route('/user/<public_id>', methods=['DELETE'])
 @token_required
 def delete_user(current_user, public_id):
-    user = User.query.filter_by(public_id=public_id, id=current_user.id).first()
+    user = User.query.filter_by(public_id=public_id).first()
     if not user:
         return jsonify({"errors" : "User not found"}), 400
+    if public_id != current_user.public_id and current_user.admin is False:
+        return jsonify({"errors" : "Permission denied"}), 403
 
     db.session.delete(user)
     db.session.commit()
 
     return jsonify({"message" : "User deleted"})
+
+@users.route('/user/<public_id>/promote', methods=['PUT'])
+@token_required
+def promote_user(current_user, public_id):    
+    user = User.query.filter_by(public_id=public_id).first()
+    if not user:
+        return jsonify({"errors" : "User not found"}), 400
+    if current_user.admin is False:
+        return jsonify({"errors" : "Permission denied"}), 403
+    
+    user.admin = True
+    db.session.commit()
+
+    return user_schema.dump(user)

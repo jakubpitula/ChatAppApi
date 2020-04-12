@@ -9,3 +9,4 @@ class User(db.Model):
     password = db.Column(db.String(60), nullable=False)
     profile_picture = db.Column(db.String())
     public_id = db.Column(db.String(50), nullable=False, unique=True)
+    admin = db.Column(db.Boolean, nullable=False)

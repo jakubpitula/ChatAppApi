@@ -8,6 +8,7 @@ class UserSchema(Schema):
     email = fields.Email(required=True)
     password = fields.Str(required=True)
     profile_picture = fields.Str()
+    admin = fields.Boolean(required=True)
 
     @post_load
     def make_user(self, data, **kwargs):
